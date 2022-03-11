@@ -40,7 +40,7 @@ class SSHClient(paramiko.client.SSHClient):
         stdin, stdout, stderr = super(SSHClient, self).exec_command(cmd)
 
         def _read_stream(stream):
-            return stream.read().decode().strip() if stream.readable() else ""
+            return stream.read().decode() if stream.readable() else ""
 
         return _read_stream(stdin), _read_stream(stdout), _read_stream(stderr)
 
@@ -76,3 +76,8 @@ class SSHClient(paramiko.client.SSHClient):
         finally:
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, oldtty)
 
+    def close(self):
+        """
+        @summary: Close the ssh connection
+        """
+        super(SSHClient, self).close()
