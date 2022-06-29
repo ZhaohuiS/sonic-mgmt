@@ -223,6 +223,7 @@ class Monitor(object):
     def __init__(self):
         self.critical_services = ['telemetry', 'snmp', 'mux', 'radv', 'dhcp_relay', 'lldp', \
                                 'syncd', 'teamd', 'swss', 'bgp', 'restapi', 'pmon', 'acms', 'database']
+        # DEFAULT_ASIC_SERVICES =  ["bgp", "database", "lldp", "swss", "syncd", "teamd"]
         self.status = {"services":None, "interfaces":None, "bgp":None}
         self.report_data = {}
         self.report_failed_count = 0
@@ -459,6 +460,64 @@ class Monitor(object):
 
         return result
 
+    def parse_process_stat(self, output_lines):
+        """
+        admin@vlab-01:~$ docker exec database supervisorctl status
+        flushdb                          EXITED    Jun 27 05:29 PM
+        redis                            RUNNING   pid 54, uptime 17:45:45
+        rsyslogd                         RUNNING   pid 53, uptime 17:45:45
+        supervisor-proc-exit-listener    RUNNING   pid 52, uptime 17:45:45
+        """
+        result = []
+        processes_info = {}
+
+        for content_line in output_lines:
+            if len(content_line) == 0:
+                break
+            columns = content_line.strip().split()
+            processes_info['process'] = columns[0]
+            processes_info['status'] = columns[1]
+            time_start_index = content_line.find(columns[2])
+            processes_info['time'] = content_line[time_start_index:]
+            result.append(processes_info)
+        
+        return result
+
+    def parse_db_omem(self, output_lines):
+        """
+        Parse the omem for all lines of redis-cli client list
+        Get the total omem value
+        """
+        result = {}
+        total_omem = 0
+        
+        re_omem = re.compile("omem=(\d+)")
+        result = False
+
+        for line in output_lines:
+            m = re_omem.search(line)
+            if m:
+                omem = int(m.group(1))
+                total_omem += omem
+        logging.debug('total_omen={}'.format(total_omem))
+        result["total_omem"] = total_omem
+        return result
+
+    def parse_monit_status(self, output_lines):
+        result = {}
+        for index, service_info in enumerate(output_lines):
+            if "status" in service_info and "monitoring status" not in service_info:
+                service_type_name = output_lines[index - 1]
+                service_type = service_type_name.split("'")[0].strip()
+                service_name = service_type_name.split("'")[1].strip()
+                service_status = service_info[service_info.find("status") + len("status"):].strip()
+
+                result[service_name] = {}
+                result[service_name]["service_status"] = service_status
+                result[service_name]["service_type"] = service_type
+
+        return result
+
     def check_dut_containers(self, client):
         """
         Check docker container services status on DUT.
@@ -566,7 +625,8 @@ class Monitor(object):
             return False
         return True
 
-    def exec_command_helper(self, client, command, host, category, parse_func=None):
+    def exec_command_helper(self, client, command, host, category, sub_category=None,
+                            parse_func=None):
         """
         Helper to run command on different host and save the collected data.
 
@@ -595,7 +655,12 @@ class Monitor(object):
                 data[category] = output
             elif parse_func:
                 result = parse_func(output.split("\n"))
-                data[category] = result if len(result) != 0 else {}
+                if sub_category:
+                    data[category] = {}
+                    data[category][sub_category] = result if len(result) != 0 else {}
+                else:
+                    data[category] = result if len(result) != 0 else {}
+                
             elif self._is_json_string(output):
                 data[category] = json.loads(output)
             else:
@@ -607,21 +672,67 @@ class Monitor(object):
                 self.report_data[host] = data
         return
 
-    def get_dut_bgp_info(self, client, duthost):
-        """Collect the bgp info on DUT.
+    def collect_dut_info(self, client, duthost):
+        cmd_parse_map = {
+            "bgp":{
+                "command":"show ip bgp summary", 
+                "parse_func": None
+            },
+            "interfaces":{
+                "command":"show interfaces status", 
+                "parse_func": None
+            },
+            "interfaces":{
+                "command":"show interfaces status", 
+                "parse_func": None
+            },
+            "services":{
+                "command":"docker stats --no-stream",
+                "parse_func": self.parse_docker_stat
+            },
+            "memory":{
+                "command":"free -m",
+                "parse_func": self.parse_memory
+            },
+            "cpu":{
+                "command":"top -b -n 1",
+                "parse_func": self.parse_cpu
+            },
+            "disk":{
+                "command":"df -h",
+                "parse_func": self.parse_disk
+            },
+            "db_omem":{
+                "command":"/usr/bin/redis-cli client list",
+                "parse_func": self.parse_db_omem
+            },
+            "monit":{
+                "command":"sudo monit status",
+                "parse_func": self.parse_monit_status
+            },
+            "mux":{
+                "command":"free -m",
+                "parse_func": None
+            }
+        }
+        # process = {}
 
-        Args:
-            client (SSHClient): The SSHClient to login DUT
-            duthost(str): the hostname of DUT
+        # for service in self.critical_services:
+        #     input_cmd = 'docker exec {} supervisorctl status'.format(service)
+        #     process[service] = {"command":input_cmd, "parse_func":self.parse_process_stat}
 
-        Returns:
-            None
-        """
-        input_cmd = 'show ip bgp summary'
-        self.exec_command_helper(client, input_cmd, duthost, "bgp")
+        # cmd_parse_map["process"] = process
+
+        for category, item_dict in cmd_parse_map.items():
+            self.exec_command_helper(client, item_dict['command'], duthost, category, parse_func=item_dict["parse_func"])
+
+        for service in self.critical_services:
+            input_cmd = 'docker exec {} supervisorctl status'.format(service)
+            self.exec_command_helper(client, input_cmd, duthost, "process", sub_category=service, parse_func=self.parse_process_stat)
+
 
     def get_dut_interfaces_info(self, client, duthost):
-        """Collect the bgp info on DUT.
+        """Collect show interface status on DUT.
 
         Args:
             client (SSHClient): The SSHClient to login DUT
@@ -632,6 +743,19 @@ class Monitor(object):
         """
         input_cmd = 'show interfaces status'
         self.exec_command_helper(client, input_cmd, duthost, "interfaces")
+
+    def get_dut_ip_interface(self, client, duthost):
+        """Collect show ip interfaces on DUT.
+
+        Args:
+            client (SSHClient): The SSHClient to login DUT
+            duthost(str): the hostname of DUT
+
+        Returns:
+            None
+        """
+        input_cmd = 'show ip interfaces'
+        self.exec_command_helper(client, input_cmd, duthost, "ip_interfaces")
 
     def get_dut_docker_services_info(self, client, duthost):
         """
@@ -717,6 +841,31 @@ class Monitor(object):
         input_cmd = 'df -h'
         self.exec_command_helper(client, input_cmd, host, "disk", parse_func=self.parse_disk)
 
+    def get_dut_all_critical_process_status(self, client, host):
+        """
+        @summary: Collect all critical processes status for all critical services
+        """
+        for service in self.critical_services:
+            input_cmd = 'docker exec {} supervisorctl status'.format(service)
+            self.exec_command_helper(client, input_cmd, host, "process", sub_category=service, parse_func=self.parse_process_stat)
+
+    def get_dut_db_memory(self, client, host):
+        """
+        @summary: Collect the total omem value of redis
+        """
+        input_cmd = '/usr/bin/redis-cli client list'
+        self.exec_command_helper(client, input_cmd, host, "db_omem", parse_func=self.parse_db_omem)
+
+    def get_dut_monit_status(self, client, host):
+        """
+        @summary: Collect monit status on dut
+        """
+        input_cmd = 'sudo monit status'
+        self.exec_command_helper(client, input_cmd, host, "monit", parse_func=self.parse_monit_status)
+
+    def get_dut_mux_status(self, client, host):
+        input_cmd = 'show mux status'
+        self.exec_command_helper(client, input_cmd, host, "mux")
 
 class Connector(object):
     """
