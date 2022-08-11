@@ -171,7 +171,7 @@ class Scheduler(object):
             boolean: True or False
         """
         # This is a manager simulator, receive POST request. 
-        url = 'http://10.64.247.30:7777/foo'
+        url = 'http://*****:7777/foo'
 
         headers = {
             'Content-Type': 'text/plain'
