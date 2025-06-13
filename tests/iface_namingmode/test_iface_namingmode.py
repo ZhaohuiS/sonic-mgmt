@@ -607,6 +607,7 @@ class TestShowQueue():
         show_queue_wm_ucast = dutHostGuest.shell(
             'SONIC_CLI_IFACE_MODE={} show queue persistent-watermark unicast'.format(ifmode))['stdout']
         logger.info('show_queue_wm_ucast:\n{}'.format(show_queue_wm_ucast))
+        # comment
 
         if mode == 'alias':
             for alias in setup['port_alias']:
