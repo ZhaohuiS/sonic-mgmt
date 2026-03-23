@@ -5,6 +5,7 @@ from .arp_utils import MacToInt, IntToMac, get_crm_resources, fdb_cleanup, \
                       clear_dut_arp_cache, increment_ipv6_addr, get_fdb_dynamic_mac_count
 import ptf.testutils as testutils
 from tests.common.helpers.assertions import pytest_assert, pytest_require
+from tests.common.errors import RunAnsibleModuleFail
 from scapy.all import Ether, IPv6, ICMPv6ND_NS, ICMPv6NDOptSrcLLAddr, in6_getnsmac, \
                       in6_getnsma, inet_pton, inet_ntop, socket
 from ipaddress import ip_address, ip_network
@@ -88,7 +89,13 @@ def test_ipv4_arp(duthost, garp_enabled, ip_and_intf_info, intfs_for_test,
         pytest_assert(wait_until(20, 1, 0, lambda: get_fdb_dynamic_mac_count(duthost) >= arp_avaliable),
                       "ARP Table Add failed")
 
-        clear_dut_arp_cache(duthost)
+        try:
+            clear_dut_arp_cache(duthost)
+        except RunAnsibleModuleFail as e:
+            if 'Failed to send flush request: No such file or directory' in str(e):
+                logger.warning("Failed to flush ARP cache, skipping: {}".format(e))
+            else:
+                raise
         fdb_cleanup(duthost)
 
         time.sleep(5)
@@ -156,7 +163,13 @@ def test_ipv6_nd(duthost, ptfhost, config_facts, tbinfo, ip_and_intf_info,
         pytest_assert(wait_until(20, 1, 0, lambda: get_fdb_dynamic_mac_count(duthost) >= nd_avaliable),
                       "Neighbor Table Add failed")
 
-        clear_dut_arp_cache(duthost)
+        try:
+            clear_dut_arp_cache(duthost)
+        except RunAnsibleModuleFail as e:
+            if 'Failed to send flush request: No such file or directory' in str(e):
+                logger.warning("Failed to flush ARP cache, skipping: {}".format(e))
+            else:
+                raise
         fdb_cleanup(duthost)
         # Wait for 10 seconds before starting next loop
         time.sleep(10)
