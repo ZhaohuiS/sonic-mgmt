@@ -314,7 +314,8 @@ def verify_lldp_table(duthost, intf_status_output, test_name=""):
     lldp_table_interfaces = set()
     for entry in lldp_table_parsed:
         interface = entry.get('localport', '')
-        if interface:
+        # Filter out separator/footer lines that show_and_parse may include
+        if interface and not interface.startswith('-') and not interface.startswith('Total'):
             lldp_table_interfaces.add(interface)
 
     logger.info("LLDP table interfaces{}: {}".format(context, sorted(lldp_table_interfaces)))
