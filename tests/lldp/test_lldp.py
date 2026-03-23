@@ -266,6 +266,34 @@ def test_lldp_neighbor_post_swss_reboot(duthosts, enum_rand_one_per_hwsku_fronte
                         enum_frontend_asic_index, tbinfo, request)
 
 
+def get_expected_chassis_mac(duthost, asic, tbinfo):
+    """
+    Get the expected chassis MAC address based on topology and ASIC configuration.
+
+    For T2 multi-ASIC: each ASIC's lldp container uses its own MAC
+    For T2 single-ASIC: chassis-id uses router MAC (DEVICE_METADATA['localhost']['mac'])
+    For non-T2: chassis-id uses management interface MAC
+
+    Args:
+        duthost: DUT host object
+        asic: ASIC instance
+        tbinfo: Testbed info
+
+    Returns:
+        str: Expected chassis MAC address (lowercase)
+    """
+    if tbinfo["topo"]["type"] == "t2":
+        if duthost.is_multi_asic:
+            asic_cfg = asic.config_facts(host=duthost.hostname, source="running")['ansible_facts']
+            return asic_cfg['DEVICE_METADATA']['localhost']['mac'].lower()
+        else:
+            config_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
+            return config_facts['DEVICE_METADATA']['localhost']['mac'].lower()
+    else:
+        mgmt_alias = duthost.get_extended_minigraph_facts(tbinfo)["minigraph_mgmt_interface"]["alias"]
+        return duthost.get_dut_iface_mac(mgmt_alias).lower()
+
+
 def verify_lldp_table(duthost, intf_status_output, test_name=""):
     """
     Verify LLDP table interfaces match interface status (admin up, no PortChannels).
@@ -281,16 +309,13 @@ def verify_lldp_table(duthost, intf_status_output, test_name=""):
     context = " {}".format(test_name) if test_name else ""
     logger.info("Verifying LLDP table{}".format(context))
 
-    # Get LLDP table output
-    lldp_table_output = duthost.shell("show lldp table")['stdout']
+    # Get LLDP table output using show_and_parse for robust parsing
+    lldp_table_parsed = duthost.show_and_parse("show lldp table")
     lldp_table_interfaces = set()
-    for line in lldp_table_output.split('\n'):
-        if line.strip() and not line.startswith('Capability') and not line.startswith('LocalPort') \
-           and not line.startswith('---') and not line.startswith('Total'):
-            parts = line.split()
-            if parts:
-                interface = parts[0]
-                lldp_table_interfaces.add(interface)
+    for entry in lldp_table_parsed:
+        interface = entry.get('localport', '')
+        if interface:
+            lldp_table_interfaces.add(interface)
 
     logger.info("LLDP table interfaces{}: {}".format(context, sorted(lldp_table_interfaces)))
     logger.info("LLDP table interfaces in total: {}".format(len(lldp_table_interfaces)))
@@ -539,10 +564,15 @@ def verify_chassis_info(duthost, asic, expected_chassis_mac, test_name=""):
                   "Bridge capability should be 'on' in chassis output{}".format(context))
     pytest_assert(re.search(r'Capability:\s+Router,\s+on', chassis_output, re.IGNORECASE),
                   "Router capability should be 'on' in chassis output{}".format(context))
-    pytest_assert(re.search(r'Capability:\s+Wlan,\s+off', chassis_output, re.IGNORECASE),
-                  "Wlan capability should be 'off' in chassis output{}".format(context))
-    pytest_assert(re.search(r'Capability:\s+Station,\s+off', chassis_output, re.IGNORECASE),
-                  "Station capability should be 'off' in chassis output{}".format(context))
+    # Wlan and Station capabilities: verify off if present (not all platforms report them)
+    wlan_match = re.search(r'Capability:\s+Wlan,\s+(\w+)', chassis_output, re.IGNORECASE)
+    if wlan_match:
+        pytest_assert(wlan_match.group(1).lower() == 'off',
+                      "Wlan capability should be 'off' in chassis output{}".format(context))
+    station_match = re.search(r'Capability:\s+Station,\s+(\w+)', chassis_output, re.IGNORECASE)
+    if station_match:
+        pytest_assert(station_match.group(1).lower() == 'off',
+                      "Station capability should be 'off' in chassis output{}".format(context))
 
 
 def test_lldp_interfaces(duthosts, enum_rand_one_per_hwsku_frontend_hostname,
@@ -582,20 +612,8 @@ def test_lldp_interfaces(duthosts, enum_rand_one_per_hwsku_frontend_hostname,
         logger.info("All interfaces from 'show interface status': {}".format(sorted(all_interfaces)))
         logger.info("All interfaces in total: {}".format(len(all_interfaces)))
 
-        # Get expected chassis MAC address based on topology
-        # For T2 multi-ASIC: each ASIC's lldp container uses its own MAC from ASIC-level config
-        # For T2 single-ASIC: chassis-id uses router MAC (DEVICE_METADATA['localhost']['mac'])
-        # For non-T2: chassis-id uses management interface MAC
-        if tbinfo["topo"]["type"] == "t2":
-            if duthost.is_multi_asic:
-                asic_cfg = asic.config_facts(host=duthost.hostname, source="running")['ansible_facts']
-                expected_chassis_mac = asic_cfg['DEVICE_METADATA']['localhost']['mac'].lower()
-            else:
-                config_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
-                expected_chassis_mac = config_facts['DEVICE_METADATA']['localhost']['mac'].lower()
-        else:
-            mgmt_alias = duthost.get_extended_minigraph_facts(tbinfo)["minigraph_mgmt_interface"]["alias"]
-            expected_chassis_mac = duthost.get_dut_iface_mac(mgmt_alias).lower()
+        # Get expected chassis MAC address
+        expected_chassis_mac = get_expected_chassis_mac(duthost, asic, tbinfo)
         logger.info("Expected chassis MAC address: {}".format(expected_chassis_mac))
 
         # Step 2: Verify LLDP table
@@ -651,17 +669,8 @@ def test_lldp_interfaces_config_reload(duthosts, enum_rand_one_per_hwsku_fronten
         logger.info("All interfaces before config reload: {}".format(sorted(all_pre_reload_interfaces)))
         logger.info("All interfaces in total: {}".format(len(all_pre_reload_interfaces)))
 
-        # Get expected chassis MAC address before reload based on topology
-        if tbinfo["topo"]["type"] == "t2":
-            if duthost.is_multi_asic:
-                asic_cfg = asic.config_facts(host=duthost.hostname, source="running")['ansible_facts']
-                expected_chassis_mac = asic_cfg['DEVICE_METADATA']['localhost']['mac'].lower()
-            else:
-                config_facts = duthost.config_facts(host=duthost.hostname, source="running")['ansible_facts']
-                expected_chassis_mac = config_facts['DEVICE_METADATA']['localhost']['mac'].lower()
-        else:
-            mgmt_alias = duthost.get_extended_minigraph_facts(tbinfo)["minigraph_mgmt_interface"]["alias"]
-            expected_chassis_mac = duthost.get_dut_iface_mac(mgmt_alias).lower()
+        # Get expected chassis MAC address before reload
+        expected_chassis_mac = get_expected_chassis_mac(duthost, asic, tbinfo)
         logger.info("Expected chassis MAC address: {}".format(expected_chassis_mac))
 
         # Record pre-reload LLDP neighbor count as baseline
