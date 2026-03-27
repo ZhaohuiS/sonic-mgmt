@@ -262,6 +262,9 @@ def sanity_check_full(ptfhost, prepare_parallel_run, localhost, duthosts, reques
     if request.config.option.skip_pre_sanity:
         skip_pre_sanity = True
 
+    if request.config.option.enable_pre_sanity:
+        skip_pre_sanity = False
+
     if request.config.option.allow_recover:
         allow_recover = True
 
@@ -271,6 +274,9 @@ def sanity_check_full(ptfhost, prepare_parallel_run, localhost, duthosts, reques
 
     if request.config.option.post_check:
         post_check = True
+
+    if request.config.option.skip_post_check:
+        post_check = False
 
     if not request.config.option.enable_macsec:
         pre_check_items.remove("check_neighbor_macsec_empty")
