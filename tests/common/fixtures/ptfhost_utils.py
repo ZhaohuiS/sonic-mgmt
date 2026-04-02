@@ -37,7 +37,7 @@ GARP_SERVICE_PY = 'garp_service.py'
 GARP_SERVICE_CONF_TEMPL = 'garp_service.conf.j2'
 PTF_TEST_PORT_MAP = '/root/ptf_test_port_map.json'
 PROBER_INTERVAL_MS = 3000
-PTFHOST_EXCEPTION_RC = 16
+HOST_FIXTURE_FAILED_RC = 15
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -312,7 +312,7 @@ def ptf_portmap_file_module(rand_selected_dut, ptfhost, tbinfo):
 def pytest_sessionfinish(session, exitstatus):
     if session.config.cache.get("ptfhost_exception", None):
         session.config.cache.set("ptfhost_exception", None)
-        session.exitstatus = PTFHOST_EXCEPTION_RC
+        session.exitstatus = HOST_FIXTURE_FAILED_RC
 
 
 icmp_responder_session_started = False
