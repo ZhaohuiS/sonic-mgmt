@@ -308,7 +308,6 @@ def ptf_portmap_file_module(rand_selected_dut, ptfhost, tbinfo):
     yield _ptf_portmap_file(rand_selected_dut, ptfhost, tbinfo)
 
 
-
 icmp_responder_session_started = False
 
 
