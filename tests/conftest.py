@@ -584,8 +584,10 @@ def pytest_sessionstart(session):
 
 
 def pytest_sessionfinish(session, exitstatus):
-    if session.config.cache.get("duthosts_fixture_failed", None):
+    if (session.config.cache.get("duthosts_fixture_failed", None) or
+            session.config.cache.get("ptfhost_exception", None)):
         session.config.cache.set("duthosts_fixture_failed", None)
+        session.config.cache.set("ptfhost_exception", None)
         session.exitstatus = HOST_FIXTURE_FAILED_RC
 
 
