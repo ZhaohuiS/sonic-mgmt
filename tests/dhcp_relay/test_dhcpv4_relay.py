@@ -164,7 +164,7 @@ def test_dhcp_relay_option82_suboptions(ptfhost, dut_dhcp_relay_data, validate_d
         for dhcp_relay in dut_dhcp_relay_data:
             vlan = str(dhcp_relay['downlink_vlan_iface']['name'])
             dhcp_servers = ",".join(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs'])
-            duthost.shell(f'config dhcpv4_relay del {vlan}')
+            duthost.shell(f'config dhcpv4_relay del {vlan}', module_ignore_errors=True)
             loopback_iface = dhcp_relay["loopback_iface"]    # noqa: F841
 
             # Add test-case specific options
@@ -256,7 +256,7 @@ def test_dhcp_relay_agent_mode(
 
             vlan = str(dhcp_relay['downlink_vlan_iface']['name'])
             dhcp_servers = ",".join(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs'])
-            duthost.shell(f'config dhcpv4_relay del {vlan}')
+            duthost.shell(f'config dhcpv4_relay del {vlan}', module_ignore_errors=True)
 
             # Update CONFIG_DB
             duthost.shell(f'config dhcpv4_relay add --dhcpv4-servers {dhcp_servers}'
@@ -371,7 +371,7 @@ def test_dhcp_relay_with_non_default_vrf(
     try:
         for dhcp_relay in dut_dhcp_relay_data:
             dhcp_servers = ",".join(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs'])
-            duthost.shell(f'config dhcpv4_relay del {vlan_iface}')
+            duthost.shell(f'config dhcpv4_relay del {vlan_iface}', module_ignore_errors=True)
             loopback_iface = dhcp_relay["loopback_iface"]    # noqa: F841
 
             # Add test-case specific options
@@ -511,7 +511,7 @@ def test_dhcp_relay_with_different_non_default_vrf(
         for dhcp_relay in dut_dhcp_relay_data:
             dhcp_servers = ",".join(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs'])
             loopback_iface = dhcp_relay["loopback_iface"]    # noqa: F841
-            duthost.shell(f'config dhcpv4_relay del {vlan_iface}')
+            duthost.shell(f'config dhcpv4_relay del {vlan_iface}', module_ignore_errors=True)
 
             duthost.shell(f'config dhcpv4_relay add --dhcpv4-servers {dhcp_servers}'
                           f' --server-vrf {SERVER_VRF_NAME} --vrf-selection enable'
@@ -579,7 +579,7 @@ def test_dhcp_max_hop_count(ptfhost, dut_dhcp_relay_data, validate_dut_routes_ex
 
             vlan = str(dhcp_relay['downlink_vlan_iface']['name'])
             dhcp_servers = ",".join(dhcp_relay['downlink_vlan_iface']['dhcp_server_addrs'])
-            duthost.shell(f'config dhcpv4_relay del {vlan}')
+            duthost.shell(f'config dhcpv4_relay del {vlan}', module_ignore_errors=True)
 
             # Update CONFIG_DB
             duthost.shell(f'config dhcpv4_relay add --dhcpv4-servers {dhcp_servers}'
