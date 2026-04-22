@@ -556,7 +556,7 @@ def run_test_on_single_container(duthost, container_name, service_name, tbinfo):
         duthost, feature_autorestart_states, up_bgp_neighbors
     )
     if not (critical_proceses and bgp_check):
-        config_reload(duthost, safe_reload=True)
+        config_reload(duthost, safe_reload=True, check_intf_up_ports=True, wait_for_bgp=True)
         # after config reload, the feature autorestart config is reset,
         # so, before next test, enable again
         enable_autorestart(duthost)
